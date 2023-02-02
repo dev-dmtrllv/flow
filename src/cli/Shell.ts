@@ -2,7 +2,18 @@ import { stdin, stdout } from "process";
 import * as readline from "readline/promises";
 import readlineSync from "readline";
 import { Disposable, disposable } from "../utils/disposable";
-import { Command, ShellCommand } from "./Command";
+import { Command } from "./Command";
+
+export abstract class ShellCommand extends Command
+{
+	public readonly shell: Shell;
+	
+	public constructor(shell: Shell)
+	{
+		super();
+		this.shell = shell;
+	}
+}
 
 @disposable
 export class Shell extends Disposable
@@ -34,9 +45,10 @@ export class Shell extends Disposable
 		});
 	}
 
-	private readonly registerCommand = (aliases: string[], callback: Callback) =>
+	private readonly registerCommand = <T extends ShellCommand>(aliases: string[], command: Constructor<T, any>) =>
 	{
-		const instance = new ShellCommand(callback);
+		const instance = new command();
+
 		aliases.forEach(alias => 
 		{
 			alias = alias.trim().toLowerCase();
