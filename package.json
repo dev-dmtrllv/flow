@@ -6,7 +6,8 @@
 	"scripts": {
 		"start": "tsc --watch",
 		"install-local": "npm install -g .",
-		"uninstall-local": "npm uninstall cpm -g"
+		"uninstall-local": "npm uninstall cpm -g",
+		"debug": "node --inspect ./dist/index.js"
 	},
 	"keywords": [],
 	"author": "",

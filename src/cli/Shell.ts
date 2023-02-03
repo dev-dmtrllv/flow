@@ -3,108 +3,143 @@ import * as readline from "readline/promises";
 import readlineSync from "readline";
 import { Disposable, disposable } from "../utils/disposable";
 import { Command } from "./Command";
-
-export abstract class ShellCommand extends Command
-{
-	public readonly shell: Shell;
-	
-	public constructor(shell: Shell)
-	{
-		super();
-		this.shell = shell;
-	}
-}
+import { CommandRegistry } from "./CommandRegistry";
+import { App } from "../App";
+import { Project } from "../Project";
 
 @disposable
 export class Shell extends Disposable
 {
 	public readonly completer = (line: string) =>
 	{
-		const commands = [...Command.getCommandNames(), ...Object.keys(this.shellCommands)];
+		const commands = CommandRegistry.getCommandNames();
 		const last = line.split(" ").slice(-1)[0] || "";
 		const hits = commands.filter((c) => c.startsWith(last));
 		return [last.length === 0 ? commands.sort() : hits.sort(), line];
 	}
 
-	private readonly shellCommands: { [key: string]: ShellCommand } = {};
-	private readonly rl: readline.Interface = readline.createInterface({ input: stdin, output: stdout, completer: this.completer, terminal: true });
+	public readonly app: App;
+	public readonly project: Project;
+	public readonly rl: readline.Interface = readline.createInterface({ input: stdin, output: stdout, completer: this.completer, terminal: true });
+
 	private didQuit: boolean = false;
 
-	public constructor()
+	private readonly consoleMap: Console = (() => 
+	{
+		const map: any = {};
+		for (const key in console)
+			map[key] = (console as any)[key];
+		return map;
+	})();
+
+	public constructor(app: App, project: Project)
 	{
 		super();
-
-		this.rl.setPrompt("> ");
-
-		this.registerCommand(["clear", "cls"], () => console.clear());
-
-		this.registerCommand(["quit", "q"], async () =>
-		{
-			const response = (await this.rl.question("Are you sure you want to quit? [Y/n] ")).trim().toLowerCase();
-			this.didQuit = response === "y" || response === "";
-		});
+		this.app = app;
+		this.project = project;
 	}
 
-	private readonly registerCommand = <T extends ShellCommand>(aliases: string[], command: Constructor<T, any>) =>
+	public async run()
 	{
-		const instance = new command();
+		this.patchConsole();
+		this.project.startWatcher();
 
-		aliases.forEach(alias => 
+		while (!this.didQuit)
 		{
-			alias = alias.trim().toLowerCase();
+			const response = (await this.rl.question("> ")).trim().toLowerCase();
 
-			const cmd = Command.fromAlias(alias);
-			if (cmd)
-				throw new Error(`Duplicate alias for ${alias}!`);
+			const [cmd, ...args] = response.split(" ");
 
-			this.shellCommands[alias] = instance;
-		});
-	}
+			const ctor = CommandRegistry.get(cmd);
 
-	public async start()
-	{
-		this.rl.prompt();
-		this.rl.on("line", async (data) =>
-		{
-			data = data.trim().toLowerCase();
-
-			const cmd = Command.fromAlias(data) || this.shellCommands[data];
-
-			if (!cmd)
+			if (!ctor)
 			{
-				console.error(`"${data}" is not a valid command`);
+				console.log(`${cmd} not found!`);
 			}
 			else
 			{
-				await cmd.run({});
-				if (this.didQuit)
-				{
-					this.dispose();
-					return;
-				}
+				await Command.run(ctor, [this.project, this], args);
 			}
+		}
 
-			this.rl.prompt();
-		});
+		this.resetConsole();
+		this.project.stopWatchers();
 	}
 
-	public write(...msgs: any)
+	private readonly porpagateConsoleOutput = <K extends keyof Console>(target: K, args: Console[K] extends (...args: infer Args) => any ? Args : []) =>
 	{
 		if (!this.didQuit)
 		{
 			readlineSync.clearLine(stdout, -1);
 			readlineSync.cursorTo(stdout, 0);
-			console.log(...msgs);
+			(this.consoleMap as any)[target](...args);
 			this.rl.prompt();
 		}
 		else
 		{
-			console.log(...msgs);
+			(this.consoleMap as any)[target](...args);
 		}
+	}
+
+	public readonly log = (...msgs: any) => this.porpagateConsoleOutput("log", msgs);
+	public readonly warn = (...msgs: any) => this.porpagateConsoleOutput("warn", msgs);
+	public readonly error = (...msgs: any) => this.porpagateConsoleOutput("error", msgs);
+
+	public readonly question = async <K extends string[]>(question: string, options: K, defaultValue: K[number] = "") =>
+	{
+		options = options.map(o => o.toLowerCase()) as K;
+		defaultValue = defaultValue?.toLowerCase();
+
+		const optionString = options.map(o => o.toLowerCase() === defaultValue ? o.toUpperCase() : o).join("/");
+
+		const msg = `${question}? [${optionString}] `;
+
+		let response = "";
+
+		if (!this.didQuit)
+		{
+			readlineSync.clearLine(stdout, -1);
+			readlineSync.cursorTo(stdout, 0);
+
+			while (!options.includes(response))
+				response = (await this.rl.question(msg)).toLowerCase();
+
+			if (!this.didQuit)
+				this.rl.prompt();
+		}
+		else
+		{
+			while (!options.includes(response))
+				response = (await this.rl.question(msg)).toLowerCase();
+		}
+
+		return response;
 	}
 
 	protected override onDispose(): void | Promise<void>
 	{
 		this.rl.close();
+	}
+
+	public readonly stop = () =>
+	{
+		readlineSync.clearLine(stdout, -1);
+		readlineSync.cursorTo(stdout, 0);
+		this.rl.removeAllListeners("line");
+		this.rl.close();
+		this.didQuit = true;
+	}
+
+	private readonly patchConsole = () =>
+	{
+		console.log = this.log;
+		console.warn = this.warn;
+		console.error = this.error;
+	}
+
+	private readonly resetConsole = () =>
+	{
+		for (const key in console)
+			(console as any)[key] = (this.consoleMap as any)[key];
 	}
 }

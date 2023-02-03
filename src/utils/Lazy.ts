@@ -1,10 +1,8 @@
 export class Lazy<T>
-{
-	private getter_: Callback<T, any>;
-	
+{	
 	private data_: T|undefined;
 
-	public get() { return this.getter_(); }
+	public get: Callback<T, any>;
 
 	public constructor(value: T);
 	public constructor(initializer: Callback<T, any>);
@@ -12,17 +10,17 @@ export class Lazy<T>
 	{
 		if(typeof arg === "function")
 		{
-			this.getter_ = (() => 
+			this.get = (() => 
 			{
 				this.data_ = arg();
-				this.getter_ = () => this.data_ as any;
+				this.get = () => this.data_ as any;
 				return this.data_;
 			}) as any;
 		}
 		else
 		{
 			this.data_ = arg;
-			this.getter_ = () => this.data_ as any;
+			this.get = () => this.data_ as any;
 		}
 	}
 }

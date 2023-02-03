@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { getFilesRecursive } from "./utils/filesystem";
+import { RecursiveWatcher, WatchEvent } from "./utils/RecursiveWatcher";
 
 export type ProjectConfiguration = {
 	includes: string,
@@ -45,12 +45,15 @@ export class Project
 	public readonly dir: string;
 	public readonly config: Config;
 
+	private readonly watcher: RecursiveWatcher;
+
 	private readonly files: { [key: string]: Date; } = {};
 
 	public constructor(dir: string, config: ProjectConfiguration | null)
 	{
 		this.dir = dir;
 		this.config = new Config(config);
+		this.watcher = new RecursiveWatcher(dir, this.onFileChange);
 		this.checkPaths();
 	}
 
@@ -67,24 +70,19 @@ export class Project
 		this.checkConfigPath("src");
 	}
 
-	private readonly onFileChange = (a: any, b: any) =>
+	private readonly onFileChange = async (type: WatchEvent, file: string) =>
 	{
-		console.log(a, b);
-	}
-
-	private readonly watchDir = (path: string) =>
-	{
-		getFilesRecursive(path).forEach(path => 
-		{
-			console.log(fs.statSync(path));
-		});
-
-		fs.watch(path, this.onFileChange);
+		console.log(`${type}\t${file}`);
 	}
 
 	public readonly startWatcher = () =>
 	{
-		this.watchDir(this.config.get("src"));
-		this.watchDir(this.config.get("includes"));
+		this.watcher.watch(this.config.get("src"));
+		this.watcher.watch(this.config.get("includes"));
+	}
+
+	public readonly stopWatchers = () =>
+	{
+		this.watcher.dispose();
 	}
 }

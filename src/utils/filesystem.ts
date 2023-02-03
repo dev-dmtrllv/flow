@@ -1,4 +1,5 @@
 import fs from "fs";
+import fsAsync from "fs/promises";
 import path from "path";
 
 const getFilesRecursive_ = (dir: string, paths: string[] = []) =>
@@ -15,3 +16,19 @@ const getFilesRecursive_ = (dir: string, paths: string[] = []) =>
 }
 
 export const getFilesRecursive = (dir: string) => getFilesRecursive_(dir, []);
+
+export const exists = async (filePath: string) =>
+{
+	try
+	{
+		await fsAsync.access(filePath);
+		return true;
+	}
+	catch (err: any)
+	{
+		if (err.code === "ENOENT")
+			return false;
+
+		throw err;
+	}
+}

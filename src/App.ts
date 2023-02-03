@@ -1,5 +1,6 @@
 
 import { Project } from "./Project";
+import { CommandRegistry } from "./cli/CommandRegistry";
 import { Shell } from "./cli/Shell";
 
 export class App
@@ -17,6 +18,8 @@ export class App
 	{
 		if (this.instance)
 			throw new Error("App's entry has already been called!");
+
+		await CommandRegistry.initialize();
 
 		this.instance = new App();
 
@@ -70,8 +73,7 @@ export class App
 
 	private readonly startInteractive = async () =>
 	{
-		this.project.startWatcher();
-		const shell = new Shell();
-		await shell.start();
+		const shell = new Shell(this, this.project);
+		await shell.run();
 	}
 }
